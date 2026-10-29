@@ -173,9 +173,17 @@ class FileHasher:
 		Credit to: https://github.com/JohannesBuchner/imagehash
 		"""
 		# Grayscale and shrink the image in one step.
+		# COMPAT FIX: `Image.ANTIALIAS` was deprecated in Pillow 9.0 and *removed* in Pillow 10.0+
+		# (see https://pillow.readthedocs.io/en/stable/releasenotes/10-0-0.html). It was only an
+		# alias for the identical Lanczos resampler, and `Image.LANCZOS` is the canonical name that
+		# exists on every supported Pillow version (9.x and 10+), so this keeps the exact same
+		# visual-hash resize behavior while working with the modern Pillow this project now uses.
+		# This is the only Pillow-10-breaking PIL API in the codebase (verified by grep).
 		image = image.convert('L').resize(
 			(hash_size + 1, hash_size),
-			Image.ANTIALIAS,
+			# Pillow 9.x: Image.ANTIALIAS == Image.LANCZOS, so the dhash output is unchanged.
+			# Pillow 10.x+: only LANCZOS exists, so it must be referenced directly.
+			Image.LANCZOS,
 		)
 		# Compare adjacent pixels.
 		difference = []

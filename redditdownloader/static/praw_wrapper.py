@@ -4,6 +4,7 @@
 """
 import praw
 import prawcore
+import os
 from static import stringutil
 from static import settings
 from processing.wrappers.redditelement import RedditElement
@@ -49,14 +50,22 @@ def init():
 	refresh = None
 	if settings.get('auth.refresh_token'):
 		refresh = settings.get('auth.refresh_token')
-	_reddit = praw.Reddit(
-		client_id=settings.get('auth.rmd_client_key'),
-		client_secret=None,
+	# AUTH is settings-driven, with env overrides (RMD_CLIENT_ID / RMD_CLIENT_SECRET) for users
+	# who prefer not to keep OAuth credentials in the settings file. Nothing is hardcoded.
+	_client_id = os.environ.get('RMD_CLIENT_ID') or settings.get('auth.rmd_client_key')
+	_client_secret = os.environ.get('RMD_CLIENT_SECRET') or settings.get('auth.rmd_client_secret')
+	_reddit_args = dict(
+		client_id=_client_id,
 		redirect_uri='http://%s:%s/authorize' % ('localhost', '7505'),
 		user_agent=settings.get('auth.user_agent'),
 		refresh_token=refresh,
 		check_for_updates=False
 	)
+	if _client_secret:
+		_reddit_args['client_secret'] = _client_secret
+	_reddit = praw.Reddit(**_reddit_args)
+
+
 
 
 def login():

@@ -212,6 +212,7 @@ class Setting(object):
 # =========  DEFAULT SETTINGS  =========
 add("auth", Setting("refresh_token", '', desc="Use this to safely authorize RMD to read your Reddit account."))
 add("auth", Setting("rmd_client_key", 'v4XVrdEH_A-ZaA', desc="Change only if you know what you're doing.", public=False))
+add("auth", Setting("rmd_client_secret", '', desc="OAuth client secret for the Reddit app (or set RMD_CLIENT_SECRET).", public=False))
 add("auth", Setting("user_agent", 'RMD-Scanner-%s' % uuid.uuid4(), desc="The user agent to identify as, wherever possible."))
 add("auth", Setting("oauth_key", str(uuid.uuid4()), desc="Internal key.", public=False))
 
@@ -235,7 +236,7 @@ add("interface", Setting("host", 'localhost', desc="The host to bind on."))
 add("imgur", Setting("client_id", '', desc="The API client ID to use when accessing private Imgur albums."))
 add("imgur", Setting("client_secret", '', desc="The API client secret to use when accessing private Imgur albums."))
 
-add(None, Setting("meta-version", 6, etype="int", public=False))
+add(None, Setting("meta-version", 7, etype="int", public=False))
 add(None, Setting("sources", [{'alias': 'default-downloader', 'data': {}, 'filters': {}, 'type': 'personal-upvoted-saved'}], etype="list", public=False))
 # ======================================
 
@@ -332,6 +333,16 @@ def _adapt(obj):
 		converted = True
 		obj[_default_cat]['meta-version'] = 6
 		# version = 6
+
+	if version == 6:
+		# Added the Reddit OAuth client secret setting, so praw_wrapper can read both
+		# credentials from Settings instead of hardcoded values.
+		obj['auth']['rmd_client_secret'] = ''
+		print("Adapted from Settings version 6 -> 7!")
+		converted = True
+		obj[_default_cat]['meta-version'] = 7
+		# version = 6
+
 	# Adjust meta-version Setting object when you make changes.
 
 	return obj, converted

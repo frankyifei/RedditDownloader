@@ -38,14 +38,18 @@ def upgrade():
         batch_op.create_index(batch_op.f('ix_hashes_p4'), ['p4'], unique=False)
 
     conn = op.get_bind()
-    res = conn.execute("select hash, id from files WHERE hash is not NULL")
+    # COMPAT (SQL:SQLA 2.x): execute() now requires raw SQL wrapped in sa.text().
+    # Same SQL as before; only the explicit wrapper was added.
+    res = conn.execute(sa.text("select hash, id from files WHERE hash is not NULL"))
     results = res.fetchall()
 
     for idx, row in enumerate(results):
         hsh = row[0]
         fid = row[1]
-        vals = (idx+1, fid, hsh, *split_hash(hsh))
-        conn.execute('INSERT INTO hashes (id, file_id, full_hash, p1, p2, p3, p4) VALUES (?, ?, ?, ?, ?, ?, ?)', vals)
+        p1, p2, p3, p4 = split_hash(hsh)
+        # COMPAT (SQL:SQLA 1.3 -> 2.x): positional ?-style tuple args are gone in 2.x;
+        # named parameters bind identically and emit the same SQL for the same values.
+        conn.execute(sa.text('INSERT INTO hashes (id, file_id, full_hash, p1, p2, p3, p4) VALUES (:h_id, :h_fid, :h_full, :h_p1, :h_p2, :h_p3, :h_p4)'), {'h_id': idx + 1, 'h_fid': fid, 'h_full': hsh, 'h_p1': p1, 'h_p2': p2, 'h_p3': p3, 'h_p4': p4})
 
     with op.batch_alter_table('files', schema=None) as batch_op:
         batch_op.drop_index('ix_files_hash')

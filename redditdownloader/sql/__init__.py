@@ -13,7 +13,17 @@ from alembic import script
 from alembic.config import Config
 from alembic.runtime import migration
 from sqlalchemy import or_
-from sqlalchemy.ext.declarative import declarative_base
+# COMPAT (SQL:SQLA 2.x): raw SQL strings passed to .execute() must now be wrapped in
+# sqlalchemy.text() - SQLAlchemy 1.3 accepted bare str, 2.x raises ArgumentError otherwise.
+# text() is the current public API and emits exactly the same SQL, so queries are unchanged.
+from sqlalchemy import text as sql_text
+# COMPAT (SQL:SQLA 1.3.23 -> 2.x): `declarative_base` moved from sqlalchemy.ext.declarative
+# (deprecated path) to sqlalchemy.orm in 1.4+/2.x. Try the modern location first, fall
+# back for old SQLAlchemy, so Base metadata/behaviour is identical on either API level.
+try:
+	from sqlalchemy.orm import declarative_base
+except ImportError:
+	from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 import os
 import shutil
@@ -64,7 +74,8 @@ def init_from_settings():
 
 def _create():
 	sess = session()
-	sess.execute("PRAGMA journal_mode=WAL")
+	# COMPAT (SQL:SQLA 2.x): wrap raw SQL in text(); see import note. Same SQL as before.
+	sess.execute(sql_text("PRAGMA journal_mode=WAL"))
 	sess.commit()
 	print("\t+Activated WAL Mode.")
 	sess.commit()
@@ -83,6 +94,10 @@ def session():
 
 def close():
 	_Session.close()
+	# COMPAT (SQL:SQLA 1.3 -> 2.x): on 2.x, Session.close() no longer releases the SQLite file
+	# handle (1.3 did); dispose the Engine so teardown/shutdown can remove the DB file reliably.
+	if _engine:
+		_engine.dispose()
 
 
 def get_file_location():
@@ -120,11 +135,15 @@ def get_alembic_ctx(conn):
 	""" Gets a full suite of Alembic objects, pre-initialized with all relevant details. """
 	alem_conf_loc = os.path.abspath(os.path.join(os.path.dirname(__file__), './alembic_files/'))
 	alembic_cfg = Config()
-	connection = conn.connection()
-	alembic_cfg.attributes['connection'] = connection
+	# COMPAT (SQL:SQLA 1.3 -> 2.x + alembic 1.4 -> 1.20): alembic's env.py expects a connectable
+	# it can call .connect() on. 1.x Session.connection() had a chained .connect(); 2.x does not,
+	# so hand env.py the Engine (conn.get_bind(), standard alembic recipe; env.py does the connect()).
+	alembic_cfg.attributes['connection'] = conn.get_bind()
 	alembic_cfg.set_main_option('script_location', alem_conf_loc)
 	scr = script.ScriptDirectory.from_config(alembic_cfg)
-	context = migration.MigrationContext.configure(alembic_cfg.attributes['connection'])
+	# COMPAT: MigrationContext.configure() rejects an Engine on 2.x/alembic 1.20 (CommandError);
+	# pass the real Connection instead. Its lifecycle stays owned by _run_migrations' conn.close().
+	context = migration.MigrationContext.configure(conn.connection())
 	return alembic_cfg, scr, context
 
 
@@ -150,7 +169,8 @@ def _run_migrations(conn) -> None:
 
 def _check_legacy(sess):
 	""" Check if there is a valid table structure, but it is unversioned. If so, apply default base 3.0.0 version. """
-	rs = sess.execute('SELECT name FROM sqlite_master WHERE type="table" AND name="posts";')
+		# COMPAT (SQL:SQLA 2.x): wrap raw SQL in text(); identical query as before.
+	rs = sess.execute(sql_text('SELECT name FROM sqlite_master WHERE type="table" AND name="posts";'))
 	if rs.fetchone():
 		alembic_cfg, script_, context = get_alembic_ctx(sess)
 		if not context.get_current_revision():

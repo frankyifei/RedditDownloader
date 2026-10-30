@@ -56,13 +56,13 @@ def init():
 	_client_secret = os.environ.get('RMD_CLIENT_SECRET') or settings.get('auth.rmd_client_secret')
 	_reddit_args = dict(
 		client_id=_client_id,
+		# PRAW 7.x: for installed apps the setting must be present; None means no secret (as before).
+		client_secret=_client_secret or None,
 		redirect_uri='http://%s:%s/authorize' % ('localhost', '7505'),
 		user_agent=settings.get('auth.user_agent'),
 		refresh_token=refresh,
 		check_for_updates=False
 	)
-	if _client_secret:
-		_reddit_args['client_secret'] = _client_secret
 	_reddit = praw.Reddit(**_reddit_args)
 
 
